@@ -13,6 +13,7 @@ export default class Game extends Phaser.Scene {
       square: 5,
       triangle: 10,
       rhombus: 15,
+      circle: -5,
     };
     this.collectableLanes = [120, 240, 360, 480, 600];
     this.collectableLaneIndex = 0;
@@ -35,11 +36,26 @@ export default class Game extends Phaser.Scene {
       .create(400, 568, "ground")
       .setScale(2)
       .refreshBody();
-    this.platforms.create(180, 380, "ground");
-    this.platforms.create(620, 300, "ground");
-    this.platforms.create(80, 220, "ground");
-    this.platforms.create(700, 180, "ground");
-    this.platforms.create(320, 120, "ground");
+    this.platforms
+      .create(180, 420, "ground")
+      .setScale(0.9)
+      .refreshBody();
+    this.platforms
+      .create(620, 340, "ground")
+      .setScale(0.8)
+      .refreshBody();
+    this.platforms
+      .create(80, 260, "ground")
+      .setScale(0.85)
+      .refreshBody();
+    this.platforms
+      .create(700, 200, "ground")
+      .setScale(0.7)
+      .refreshBody();
+    this.platforms
+      .create(320, 135, "ground")
+      .setScale(0.75)
+      .refreshBody();
 
     this.player = this.physics.add.sprite(100, 450, "dude");
     this.player.setBounce(0.2);
@@ -205,6 +221,11 @@ export default class Game extends Phaser.Scene {
         true
       );
     });
+
+    createTexture("circle", (graphics) => {
+      graphics.fillStyle(0xff1744, 1);
+      graphics.fillCircle(24, 24, 20);
+    });
   }
 
   spawnCollectable() {
@@ -212,7 +233,7 @@ export default class Game extends Phaser.Scene {
       return;
     }
 
-    const types = ["square", "triangle", "rhombus"];
+    const types = ["square", "triangle", "rhombus", "circle"];
     const type = Phaser.Utils.Array.GetRandom(types);
 
     const laneIndex = this.collectableLaneIndex;
@@ -227,7 +248,10 @@ export default class Game extends Phaser.Scene {
     collectable.setBounce(0.25);
     collectable.body.allowGravity = true;
     collectable.setData("type", type);
-    collectable.setData("remainingPoints", this.collectablePoints[type]);
+    collectable.setData(
+      "remainingPoints",
+      type === "circle" ? 2 : this.collectablePoints[type]
+    );
   }
 
   collectCollectable(player, collectable) {
@@ -235,6 +259,11 @@ export default class Game extends Phaser.Scene {
 
     collectable.destroy();
     this.score += this.collectablePoints[type];
+
+    if (this.score < 0) {
+      this.score = 0;
+    }
+
     this.scoreText.setText(`Score: ${this.score}`);
 
     if (this.score > 100) {
@@ -243,6 +272,21 @@ export default class Game extends Phaser.Scene {
   }
 
   handleCollectablePlatformBounce(collectable) {
+    const type = collectable.getData("type");
+
+    if (type === "circle") {
+      const remainingPoints = collectable.getData("remainingPoints") - 1;
+
+      if (remainingPoints <= 0) {
+        collectable.destroy();
+        return;
+      }
+
+      collectable.setData("remainingPoints", remainingPoints);
+      collectable.setVelocityY(-80);
+      return;
+    }
+
     const remainingPoints = collectable.getData("remainingPoints") - 5;
 
     if (remainingPoints <= 0) {
