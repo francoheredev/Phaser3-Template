@@ -15,7 +15,7 @@ export default class Game extends Phaser.Scene {
 
     this.score = 0;
     this.gameOver = false;
-    this.timeLeft = 10;
+    this.timeLeft = 90;
   }
 
   preload() {
@@ -96,7 +96,7 @@ export default class Game extends Phaser.Scene {
 
     this.gameOverText.setVisible(false);
 
-    this.timeText = this.add.text(700, 16, `Time: ${this.timeLeft}`, {
+    this.timeText = this.add.text(700, 16, `Tiempo: ${this.timeLeft}`, {
       fontSize: "32px",
       fill: "#000",
     });
@@ -104,18 +104,17 @@ export default class Game extends Phaser.Scene {
     this.timeText.setOrigin(0.5, 0.5);
 
     this.timer = this.time.addEvent({
-      delay: 1000, // definido en ms
+      delay: 1000,
       callback: () => {
+        if (this.gameOver) {
+          return;
+        }
+
         this.timeLeft -= 1;
-        this.timeText.setText(`Time: ${this.timeLeft}`);
+        this.timeText.setText(`Tiempo: ${this.timeLeft}`);
 
         if (this.timeLeft <= 0) {
-          this.timer.remove(false);
-          this.scene.start("finish", {
-            score: this.score,
-            timeLeft: this.timeLeft,
-            state: "Perdiste",
-          });
+          this.endGame("Perdiste");
         }
       },
       loop: true,
@@ -143,6 +142,13 @@ export default class Game extends Phaser.Scene {
   }
 
   update() {
+    if (this.gameOver) {
+      this.gameOverText.setVisible(true);
+      this.player.setVelocity(0, 0);
+      this.player.anims.play("turn");
+      return;
+    }
+
     // update game objects
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-160);
@@ -165,12 +171,6 @@ export default class Game extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
       console.log("Phaser.Input.Keyboard.JustDown(this.keyR)");
       this.scene.restart();
-    }
-
-    if (this.gameOver) {
-      this.gameOverText.setVisible(true);
-      this.player.setVelocity(0, 0);
-      this.player.anims.play("turn");
     }
   }
 
@@ -200,26 +200,27 @@ export default class Game extends Phaser.Scene {
   }
 
   hitBomb(player, bomb) {
+    this.endGame("Perdiste");
+  }
+
+  endGame(state) {
+    if (this.gameOver) {
+      return;
+    }
+
+    this.gameOver = true;
     this.physics.pause();
-
     this.player.setTint(0xff0000);
-
     this.player.anims.play("turn");
+
+    if (this.timer) {
+      this.timer.remove(false);
+    }
 
     this.scene.start("finish", {
       score: this.score,
       timeLeft: this.timeLeft,
-      state: "Perdiste",
+      state,
     });
-  }
-
-  handleTimerEvent() {
-    this.timeLeft -= 1;
-    this.timeText.setText(`Time: ${this.timeLeft}`);
-
-    if (this.timeLeft <= 0) {
-      this.timer.remove(false);
-      this.gameOver = true;
-    }
   }
 }
