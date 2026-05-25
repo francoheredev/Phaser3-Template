@@ -2,28 +2,25 @@
 
 export default class Game extends Phaser.Scene {
   constructor() {
-    // key of the scene
-    // the key will be used to start the scene by other scenes
     super("game");
   }
 
   init() {
-    // this is called before the scene is created
-    // init variables
-    // take data passed from other scenes
-    // data object param {}
-
     this.score = 0;
     this.gameOver = false;
-    this.timeLeft = 90;
+    this.timeLeft = 30;
+    this.collectablePoints = {
+      square: 5,
+      triangle: 10,
+      rhombus: 15,
+    };
+    this.collectableLanes = [120, 240, 360, 480, 600];
+    this.collectableLaneIndex = 0;
   }
 
   preload() {
-    // load assets
     this.load.image("sky", "./public/assets/sky.png");
     this.load.image("ground", "./public/assets/platform.png");
-    this.load.image("star", "./public/assets/star.png");
-    this.load.image("bomb", "./public/assets/bomb.png");
     this.load.spritesheet("dude", "./public/assets/dude.png", {
       frameWidth: 32,
       frameHeight: 48,
@@ -31,19 +28,20 @@ export default class Game extends Phaser.Scene {
   }
 
   create() {
-    // create game objects
     this.add.image(400, 300, "sky");
 
     this.platforms = this.physics.add.staticGroup();
-
-    this.platforms.create(400, 568, "ground").setScale(2).refreshBody();
-
-    this.platforms.create(600, 400, "ground");
-    this.platforms.create(50, 250, "ground");
-    this.platforms.create(750, 220, "ground");
+    this.floorPlatform = this.platforms
+      .create(400, 568, "ground")
+      .setScale(2)
+      .refreshBody();
+    this.platforms.create(180, 380, "ground");
+    this.platforms.create(620, 300, "ground");
+    this.platforms.create(80, 220, "ground");
+    this.platforms.create(700, 180, "ground");
+    this.platforms.create(320, 120, "ground");
 
     this.player = this.physics.add.sprite(100, 450, "dude");
-
     this.player.setBounce(0.2);
     this.player.setCollideWorldBounds(true);
 
@@ -70,17 +68,9 @@ export default class Game extends Phaser.Scene {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
 
-    this.stars = this.physics.add.group({
-      key: "star",
-      repeat: 11,
-      setXY: { x: 12, y: 0, stepX: 70 },
-    });
+    this.createCollectableTextures();
 
-    this.stars.children.iterate(function (child) {
-      child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
-    });
-
-    this.bombs = this.physics.add.group();
+    this.collectables = this.physics.add.group();
 
     this.scoreText = this.add.text(16, 16, `Score: ${this.score}`, {
       fontSize: "32px",
@@ -91,16 +81,13 @@ export default class Game extends Phaser.Scene {
       fontSize: "64px",
       fill: "#000",
     });
-
     this.gameOverText.setOrigin(0.5, 0.5);
-
     this.gameOverText.setVisible(false);
 
     this.timeText = this.add.text(700, 16, `Tiempo: ${this.timeLeft}`, {
       fontSize: "32px",
       fill: "#000",
     });
-
     this.timeText.setOrigin(0.5, 0.5);
 
     this.timer = this.time.addEvent({
@@ -120,25 +107,30 @@ export default class Game extends Phaser.Scene {
       loop: true,
     });
 
+    this.spawnTimer = this.time.addEvent({
+      delay: 500,
+      callback: this.spawnCollectable,
+      callbackScope: this,
+      loop: true,
+    });
+
     this.physics.add.collider(this.player, this.platforms);
-
-    this.physics.add.collider(this.stars, this.platforms);
-
+    this.physics.add.collider(
+      this.collectables,
+      this.platforms,
+      this.handleCollectablePlatformBounce,
+      null,
+      this
+    );
     this.physics.add.overlap(
       this.player,
-      this.stars,
-      this.collectStar,
+      this.collectables,
+      this.collectCollectable,
       null,
       this
     );
 
-    this.physics.add.collider(
-      this.player,
-      this.bombs,
-      this.hitBomb,
-      null,
-      this
-    );
+    this.spawnCollectable();
   }
 
   update() {
@@ -149,18 +141,24 @@ export default class Game extends Phaser.Scene {
       return;
     }
 
-    // update game objects
+    this.collectables.children.iterate((child) => {
+      if (!child) {
+        return;
+      }
+
+      if (child.y > 700) {
+        child.destroy();
+      }
+    });
+
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-160);
-
       this.player.anims.play("left", true);
     } else if (this.cursors.right.isDown) {
       this.player.setVelocityX(160);
-
       this.player.anims.play("right", true);
     } else {
       this.player.setVelocityX(0);
-
       this.player.anims.play("turn");
     }
 
@@ -169,38 +167,91 @@ export default class Game extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
-      console.log("Phaser.Input.Keyboard.JustDown(this.keyR)");
       this.scene.restart();
     }
   }
 
-  collectStar(player, star) {
-    star.disableBody(true, true);
+  createCollectableTextures() {
+    if (this.textures.exists("square")) {
+      return;
+    }
 
-    this.score += 10;
+    const createTexture = (key, drawFn) => {
+      const graphics = this.make.graphics({ add: false });
+      drawFn(graphics);
+      graphics.generateTexture(key, 48, 48);
+      graphics.destroy();
+    };
+
+    createTexture("square", (graphics) => {
+      graphics.fillStyle(0x00c853, 1);
+      graphics.fillRect(6, 6, 36, 36);
+    });
+
+    createTexture("triangle", (graphics) => {
+      graphics.fillStyle(0xffab00, 1);
+      graphics.fillTriangle(24, 4, 6, 40, 42, 40);
+    });
+
+    createTexture("rhombus", (graphics) => {
+      graphics.fillStyle(0x2962ff, 1);
+      graphics.fillPoints(
+        [
+          { x: 24, y: 4 },
+          { x: 44, y: 24 },
+          { x: 24, y: 44 },
+          { x: 4, y: 24 },
+        ],
+        true
+      );
+    });
+  }
+
+  spawnCollectable() {
+    if (this.gameOver) {
+      return;
+    }
+
+    const types = ["square", "triangle", "rhombus"];
+    const type = Phaser.Utils.Array.GetRandom(types);
+
+    const laneIndex = this.collectableLaneIndex;
+    const x = this.collectableLanes[laneIndex];
+    const collectable = this.collectables.create(x, -40, type);
+
+    this.collectableLaneIndex = (laneIndex + 1) % this.collectableLanes.length;
+
+    collectable.setScale(0.9);
+    collectable.setVelocityY(120);
+    collectable.setVelocityX(laneIndex % 2 === 0 ? 20 : -20);
+    collectable.setBounce(0.25);
+    collectable.body.allowGravity = true;
+    collectable.setData("type", type);
+    collectable.setData("remainingPoints", this.collectablePoints[type]);
+  }
+
+  collectCollectable(player, collectable) {
+    const type = collectable.getData("type");
+
+    collectable.destroy();
+    this.score += this.collectablePoints[type];
     this.scoreText.setText(`Score: ${this.score}`);
 
-    if (this.stars.countActive(true) === 0) {
-      //  A new batch of stars to collect
-      this.stars.children.iterate(function (child) {
-        child.enableBody(true, child.x, 0, true, true);
-      });
-
-      var x =
-        this.player.x < 400
-          ? Phaser.Math.Between(400, 800)
-          : Phaser.Math.Between(0, 400);
-
-      var bomb = this.bombs.create(x, 16, "bomb");
-      bomb.setBounce(1);
-      bomb.setCollideWorldBounds(true);
-      bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
-      bomb.allowGravity = false;
+    if (this.score > 100) {
+      this.endGame("Ganaste");
     }
   }
 
-  hitBomb(player, bomb) {
-    this.endGame("Perdiste");
+  handleCollectablePlatformBounce(collectable) {
+    const remainingPoints = collectable.getData("remainingPoints") - 5;
+
+    if (remainingPoints <= 0) {
+      collectable.destroy();
+      return;
+    }
+
+    collectable.setData("remainingPoints", remainingPoints);
+    collectable.setVelocityY(-80);
   }
 
   endGame(state) {
@@ -215,6 +266,10 @@ export default class Game extends Phaser.Scene {
 
     if (this.timer) {
       this.timer.remove(false);
+    }
+
+    if (this.spawnTimer) {
+      this.spawnTimer.remove(false);
     }
 
     this.scene.start("finish", {
